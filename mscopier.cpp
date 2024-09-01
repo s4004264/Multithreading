@@ -5,6 +5,7 @@
 #include <fstream>
 #include <vector>
 #include <unistd.h>
+#include <cstdlib>
 
 std::queue<std::string> lines;
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -33,7 +34,7 @@ void *reader(void *source){
         pthread_mutex_unlock(&mutex); // exit the critical zone
     }
 
-    return nullptr;
+    return NULL;
 }
 
 void *writer(void *destination){
@@ -43,7 +44,7 @@ void *writer(void *destination){
         while(lines.empty()){
             if(finished){
                 pthread_mutex_unlock(&mutex); //exit the critical zone
-                return nullptr; //exit the infinite loop
+                return NULL; //exit the infinite loop
             }
             pthread_cond_wait(&notEmpty, &mutex);
         }
@@ -53,7 +54,7 @@ void *writer(void *destination){
         pthread_cond_signal(&notFull);
         pthread_mutex_unlock(&mutex); //exit the critical zone
     }
-    return nullptr;
+    return NULL;
 }
 
 
@@ -86,13 +87,13 @@ int main(int argc, char* argv[]){
     std::vector<pthread_t> write(n);
 
     for (int i = 0; i < n; i++){
-        pthread_create(&read.at(i), nullptr, reader, &source);
-        pthread_create(&write.at(i), nullptr, writer, &destination);
+        pthread_create(&read.at(i), NULL, reader, &source);
+        pthread_create(&write.at(i), NULL, writer, &destination);
     }
 
     for (int i = 0; i < n; i++){
-        pthread_join(read.at(i), nullptr);
-        pthread_join(write.at(i), nullptr);
+        pthread_join(read.at(i), NULL);
+        pthread_join(write.at(i), NULL);
     }
 
     std::cout << "num arguments: " << argc << "\nnum threads: " << n << "\nsource file: " << argv[2] << "\ndestination file: " << argv[3];
