@@ -1,0 +1,210 @@
+mmcopier.cpp:
+#include <iostream>
+#include <pthread.h>
+#include <string>
+#include <dirent.h>
+#include <fstream>
+#include <vector>
+#include <sys/stat.h>
+#include <cstring>
+#include <cstdlib>
+//just all imports
+
+class paths { //effectively my own version of a tuple rather than using the c++ library as I am unfamiliar with it
+public:
+    std::string source;
+    std::string destination;
+};
+
+void* copy(void* pathptr) { //function for copy threads to call
+    paths* path = static_cast<paths*>(pathptr); //get the path and cast it to the proper type
+    std::ifstream source(path->source.c_str(), std::ios::binary); //open the source destination for reading in binary mode
+    if (!source) { //if there is no source file
+        std::cerr << "Error opening source: " << path->source; //give an error message
+        return (void*)1; //return 1
+    }
+
+    std::ofstream destination(path->destination.c_str(), std::ios::binary); //get the output directory in binary mode
+    if (!destination) { //if there is no destination 
+        std::cerr << "Error opening destination: " << path->destination; //give an error message
+        return (void*)1; //return 1
+    }
+
+    try { //try catch for errors 
+        destination << source.rdbuf(); //write the buffer to the destination
+    }
+    catch (const std::exception& e) { //catch an error
+        std::cerr << "Error writing to destination: " << path->destination; //give an error message
+        return (void*)1; //return 1
+    }
+
+    return (void*)0; //return 0
+}
+
+int main(int argc, char* argv[]) {
+    if (argc != 4) { //give an error if the wrong argument structure is provided
+        std::cout << "Please use the format: ./filename <number of thread> <source directory> <destination directory>";
+        return 1;
+    }
+
+    int n = atoi(argv[1]); //convert the n from a string to an int
+
+    if (n <= 0 || n > 10) { //range check for n
+        std::cout << "Please choose a positive integer up to 10";
+        return 1;
+    }
+
+    std::string source = argv[2]; //get the source directory
+    std::string destination = argv[3]; //get the destination directory
+
+    DIR* dir = opendir(source.c_str()); //open the source directory
+    if (!dir) { //if there is no source
+        std::cerr << "Please enter a valid source directory"; //give an error message
+        return 1; //return 1
+    }
+
+    struct stat st; //create a file structure struct
+    if (stat(destination.c_str(), &st) != 0 || !S_ISDIR(st.st_mode)) { //check if the destination exists
+        std::cerr << "Please enter a valid destination directory"; // give an error message
+        closedir(dir); //close the source
+        return 1; //return 1
+    }
+
+    std::vector<pthread_t> threadList(n); //create a list of threads
+    std::vector<paths> copyPaths(n); //create a list of paths
+
+    struct dirent* entry; //create a directory for iteration
+    int i = 0; //create a counter for iterating
+    while ((entry = readdir(dir)) != NULL) { //loop through each file in source
+        if (i >= n) { //if i is larger than the number of files end loop
+            break;
+        }
+        if (entry->d_type == DT_REG) { //check if the current directory is a regular file
+            copyPaths[i].source = source + "/" + entry->d_name; //create the source file path
+            copyPaths[i].destination = destination + "/" + entry->d_name; //create the destination file path
+
+            int thread = pthread_create(&threadList[i], NULL, copy, &copyPaths[i]); //create a thread for copying
+            if (thread != 0) { //if thread creation fails
+                std::cerr << "Thread creation failed"; //give an error message
+                closedir(dir); //close the source directory
+                return 1; //return 1
+            }
+            i++; //increment i
+        }
+    }
+
+    closedir(dir); //close source
+
+    for (int j = 0; j < i; j++) { //loop for each thread
+        pthread_join(threadList[j], NULL); //join the given thread
+    }
+
+    std::cout << "num arguments: " << argc << "\nnum threads: " << n << "\nsource directory: " << source << "\ndestination directory: " << destination;
+    return 0; //return 0
+}
+
+mscopier.cpp:
+#include <iostream>
+#include <pthread.h>
+#include <queue>
+#include <string>
+#include <fstream>
+#include <vector>
+#include <unistd.h>
+#include <cstdlib>
+//just all imports
+
+std::queue<std::string> lines; //create a queue of lines to write
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER; //initialise the mutex
+pthread_cond_t notFull = PTHREAD_COND_INITIALIZER; //initialise the notFull condition
+pthread_cond_t notEmpty = PTHREAD_COND_INITIALIZER; //initialise the notEmpty condition
+long unsigned int threadCount; //initialise a count for the total number of threads
+bool finished = false; //initialise the finished flag to false
+
+
+void *reader(void *source){ //create a function for the reader threads
+    std::ifstream *file = static_cast<std::ifstream*>(source); //cast the parsed source to the correct type
+    std::string line; //create a temporary line variable
+    while(!finished){ //while the finished flag is false
+        pthread_mutex_lock(&mutex); //enter the critical zone
+        while(lines.size() == threadCount){ //while the size of the lines queue is the number of threads
+            pthread_cond_wait(&notFull, &mutex); //wait
+        }
+        if(!std::getline(*file, line)){ //get a line, if there is not a line to get
+            finished = true; //set the finished flag to true
+            pthread_cond_broadcast(&notEmpty); //broadcast the notEmpty condition
+            pthread_mutex_unlock(&mutex); //exit the critical zone
+            break;//break out of the look
+        }
+        lines.push(line); //push the line to the list of lines
+        pthread_cond_signal(&notEmpty); //signal the notEmpty condition for one thread to start attempting to write
+        pthread_mutex_unlock(&mutex); // exit the critical zone
+    }
+
+    return NULL;
+}
+
+void *writer(void *destination){
+    std::ofstream* writeFile = static_cast<std::ofstream*>(destination); //cast the parsed destination to the correct type
+    while(true){ //forever loop
+        pthread_mutex_lock(&mutex); //enter the critical zone
+        while(lines.empty()){ //loop as long as the global lines queue is empty
+            if(finished){ //check if the finished flag is set
+                pthread_mutex_unlock(&mutex); //exit the critical zone
+                return NULL; //exit the infinite loop
+            }
+            pthread_cond_wait(&notEmpty, &mutex); //wait until the not empty signal
+        }
+        std::string writeLine= lines.front(); //get the line from the front of the queue
+        lines.pop(); //remove that line from the queue
+        *writeFile << writeLine << std::endl; //write the line to the file
+        pthread_cond_signal(&notFull); //signal the not full condition
+        pthread_mutex_unlock(&mutex); //exit the critical zone
+    }
+    return NULL; //return
+}
+
+
+
+int main(int argc, char* argv[]){
+    if (argc != 4){ //check if the number of arguments is correct
+        std::cout << "Please use the format: ./filename <number of thread> <source file> <destination file>";
+        return 1;
+    }
+    int n = atoi(argv[1]); //convert the number of threads from a string to an int
+
+    if (n < 2 || n > 10){ //check the range of n
+        std::cout << "Please choose a positive integer between 2 and 10";
+        return 1;
+    }
+    threadCount = n; //set the threadcount to n if all checks pass
+    std::ifstream source(argv[2]); //create an input stream from the source
+    if(!source){ //if there is no source
+        std::cerr << "Error opening source"; //give an error message
+        return 1; //return 1
+    }
+    
+    std::ofstream destination(argv[3]); //create an output stream
+    if(!destination){ //if there is a problem 
+        std::cerr << "Error opening destination"; //give an error message
+        return 1; //return 1
+    }
+
+    std::vector<pthread_t> read(n); //create a list of reader threads
+    std::vector<pthread_t> write(n); //create a list of writer threads
+
+    for (int i = 0; i < n; i++){ //loop for the number of threads given in args
+        pthread_create(&read.at(i), NULL, reader, &source); //create reader
+        pthread_create(&write.at(i), NULL, writer, &destination); //create writer
+    }
+
+    for (int i = 0; i < n; i++){ //loop for number of threads given in args
+        pthread_join(read.at(i), NULL); //join reader
+        pthread_join(write.at(i), NULL); //join writer
+    }
+
+    std::cout << "num arguments: " << argc << "\nnum threads: " << n << "\nsource file: " << argv[2] << "\ndestination file: " << argv[3];
+    source.close(); //close source
+    destination.close(); //close destination
+    return 0;
+}
