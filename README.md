@@ -2,6 +2,7 @@
 to run the code first run make 
 
 For mmcopier run ./mmcopier <number of threads> <source_dir> <destination_dir> (create these two directorys if they are not already created)
+
 For mscopier run ./mscopier <number of threads> <source file> <destination file> (create the source file if it is not already)
 
 locks and condition variables:
