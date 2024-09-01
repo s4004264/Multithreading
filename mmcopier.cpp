@@ -6,6 +6,7 @@
 #include <vector>
 #include <sys/stat.h>
 #include <cstring>
+#include <cstdlib>
 
 class paths {
 public:
@@ -15,13 +16,13 @@ public:
 
 void* copy(void* pathptr) {
     paths* path = static_cast<paths*>(pathptr);
-    std::ifstream source(path->source, std::ios::binary);
+    std::ifstream source(path->source.c_str(), std::ios::binary);
     if (!source) {
         std::cerr << "Error opening source: " << path->source;
         return (void*)1;
     }
 
-    std::ofstream destination(path->destination, std::ios::binary);
+    std::ofstream destination(path->destination.c_str(), std::ios::binary);
     if (!destination) {
         std::cerr << "Error opening destination: " << path->destination;
         return (void*)1;
@@ -72,7 +73,7 @@ int main(int argc, char* argv[]) {
 
     struct dirent* entry;
     int i = 0;
-    while ((entry = readdir(dir)) != nullptr) {
+    while ((entry = readdir(dir)) != NULL) {
         if (i >= n) {
             break;
         }
@@ -80,7 +81,7 @@ int main(int argc, char* argv[]) {
             copyPaths[i].source = source + "/" + entry->d_name;
             copyPaths[i].destination = destination + "/" + entry->d_name;
 
-            int thread = pthread_create(&threadList[i], nullptr, copy, &copyPaths[i]);
+            int thread = pthread_create(&threadList[i], NULL, copy, &copyPaths[i]);
             if (thread != 0) {
                 std::cerr << "Thread creation failed";
                 closedir(dir);
@@ -93,7 +94,7 @@ int main(int argc, char* argv[]) {
     closedir(dir);
 
     for (int j = 0; j < i; j++) {
-        pthread_join(threadList[j], nullptr);
+        pthread_join(threadList[j], NULL);
     }
 
     std::cout << "num arguments: " << argc << "\nnum threads: " << n << "\nsource directory: " << source << "\ndestination directory: " << destination;
