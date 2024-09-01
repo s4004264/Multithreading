@@ -62,7 +62,7 @@ void *writer(void *destination){
 
 int main(int argc, char* argv[]){
     if (argc != 4){ //check if the number of arguments is correct
-        std::cout << "Please use the format: ./filename <number of thread> <source directory> <destination directory>";
+        std::cout << "Please use the format: ./filename <number of thread> <source file> <destination file>";
         return 1;
     }
     int n = atoi(argv[1]); //convert the number of threads from a string to an int
